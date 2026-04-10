@@ -20,7 +20,10 @@ async def create_migration_pr(
     4. Commit + push
     5. Open PR via GitHub API
     """
-    branch_name = f"parsec/fix-{breakage['package'].lower()}-{breakage['old_version']}"
+    package     = breakage.get("package", "unknown").lower()
+    old_version = breakage.get("old_version", "current")
+    new_version = breakage.get("new_version", "latest")
+    branch_name = f"parsec/fix-{package}-{old_version}"
 
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
         repo_url = f"https://x-access-token:{github_token}@github.com/{owner}/{repo}.git"
@@ -40,13 +43,13 @@ async def create_migration_pr(
         subprocess.run(["git", "checkout", "-b", branch_name], cwd=tmp_dir, check=True)
 
         # 4. Add migration notes as a file
-        migration_file = Path(tmp_dir) / f"parsec_migration_{breakage['package']}.md"
+        migration_file = Path(tmp_dir) / f"parsec_migration_{package}.md"
         migration_file.write_text(
-            f"# Migration: {breakage['package']} {breakage['old_version']} -> {breakage['new_version']}\n\n"
+            f"# Migration: {package} {old_version} -> {new_version}\n\n"
             f"## Breaking Change\n"
             f"- **Kind:** {breakage.get('kind', 'N/A')}\n"
             f"- **Location:** {breakage.get('location', 'N/A')}\n"
-            f"- **Reason:** {breakage.get('reason', 'N/A')}\n\n"
+            f"- **Reason:** {breakage.get('reason') or breakage.get('info') or 'N/A'}\n\n"
             f"## AI-Suggested Fix\n\n"
             f"```python\n{fix_suggestion}\n```\n\n"
             f"## Affected Files\n"
@@ -59,7 +62,7 @@ async def create_migration_pr(
         subprocess.run(["git", "add", "."], cwd=tmp_dir)
         subprocess.run([
             "git", "commit", "-m",
-            f"fix: migration guide for {breakage['package']} {breakage['old_version']}→{breakage['new_version']}"
+            f"fix: migration guide for {package} {old_version} -> {new_version}"
         ], cwd=tmp_dir, check=True)
 
         # 6. Push branch
@@ -100,6 +103,10 @@ async def _create_github_pr(
     affected_files: List[str],
 ) -> Dict:
     """Create a PR via GitHub API."""
+    package     = breakage.get("package", "unknown")
+    old_version = breakage.get("old_version", "current")
+    new_version = breakage.get("new_version", "latest")
+
     headers = {
         "Authorization": f"Bearer {github_token}",
         "Accept": "application/vnd.github+json",
@@ -107,7 +114,7 @@ async def _create_github_pr(
 
     pr_body = (
         f"## 🔍 Parsec Dependency Migration Report\n\n"
-        f"### Package: `{breakage['package']}` `{breakage['old_version']}` → `{breakage['new_version']}`\n\n"
+        f"### Package: `{package}` `{old_version}` -> `{new_version}`\n\n"
         f"| Field | Detail |\n"
         f"|-------|--------|\n"
         f"| Kind | `{breakage.get('kind', 'N/A')}` |\n"
@@ -128,7 +135,7 @@ async def _create_github_pr(
             f"https://api.github.com/repos/{owner}/{repo}/pulls",
             headers=headers,
             json={
-                "title": f"fix: Migrate {breakage['package']} {breakage['old_version']} → {breakage['new_version']}",
+                "title": f"fix: Migrate {package} {old_version} -> {new_version}",
                 "body": pr_body,
                 "head": branch_name,
                 "base": "main",
